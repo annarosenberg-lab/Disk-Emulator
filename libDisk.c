@@ -34,3 +34,15 @@ int openDisk(char *filename, int nBytes){
 int closeDisk(int disk){
     return close(disk);
 }
+
+int readBlock(int disk, int bNum, void *block){
+    if (lseek(disk, bNum * BLOCKSIZE, SEEK_SET) == -1) return -1;
+    if (read(disk, block, BLOCKSIZE) < BLOCKSIZE) return -1;
+    return 0;
+}
+
+int writeBlock(int disk, int bNum, void *block){
+    if (lseek(disk, bNum * BLOCKSIZE, SEEK_SET) == -1) return -1;
+    if (write(disk, block, BLOCKSIZE) < BLOCKSIZE) return -1;
+    return 0;
+}
