@@ -11,16 +11,32 @@ typedef int fileDescriptor;
 
 // superblock structure
 typedef struct {
+    unsigned char blockType;
     unsigned char magicNumber;
     unsigned char rootInode;
     unsigned char freeBlockListPtr;
 } Superblock;
 
 typedef struct {
+    unsigned char blockType;
+    unsigned char magicNumber;
     unsigned char fileName[8];
     unsigned int fileSize; 
     unsigned int dataBlockPtrs[10];
 } Inode;
+
+typedef struct{
+    unsigned char blockType;
+    unsigned char magicNumber;
+    unsigned int nextDataBlock;
+    unsigned char data[BLOCKSIZE - 3];
+} FileExtent;
+
+typedef struct {
+    unsigned char blockType;
+    unsigned char magicNumber;
+    unsigned int nextFreeBlock; 
+} FreeBlock;
 
 
 int tfs_mkfs(char *filename, int nBytes){
