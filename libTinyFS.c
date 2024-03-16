@@ -21,21 +21,21 @@ typedef struct {
     unsigned char blockType;
     unsigned char magicNumber;
     unsigned char fileName[8];
-    unsigned int fileSize; 
-    unsigned int dataBlockPtrs[10];
+    unsigned char fileSize; 
+    unsigned char dataBlockPtrs[10];
 } Inode;
 
 typedef struct{
     unsigned char blockType;
     unsigned char magicNumber;
-    unsigned int nextDataBlock;
+    unsigned char nextDataBlock;
     unsigned char data[BLOCKSIZE - 3];
 } FileExtent;
 
 typedef struct {
     unsigned char blockType;
     unsigned char magicNumber;
-    unsigned int nextFreeBlock; 
+    unsigned char nextFreeBlock; 
 } FreeBlock;
 
 
