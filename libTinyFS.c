@@ -14,15 +14,19 @@ typedef struct {
     unsigned char blockType;
     unsigned char magicNumber;
     unsigned char rootInode;
-    unsigned char freeBlockListPtr;
+    unsigned char freeBlockPtr;
+    unsigned char emptyBytes[BLOCKSIZE - 4];
 } Superblock;
 
 typedef struct {
     unsigned char blockType;
     unsigned char magicNumber;
-    unsigned char fileName[8];
+    unsigned char fileName[9];
     unsigned char fileSize; 
-    unsigned char dataBlockPtrs[10];
+    unsigned char filePointer;
+    unsigned char nextInodePtr;
+    unsigned char firstFileExtentPtr;
+    unsigned char emptyBytes[BLOCKSIZE - 15];
 } Inode;
 
 typedef struct{
@@ -36,6 +40,7 @@ typedef struct {
     unsigned char blockType;
     unsigned char magicNumber;
     unsigned char nextFreeBlock; 
+    unsigned char emptyBytes[BLOCKSIZE - 3];
 } FreeBlock;
 
 
