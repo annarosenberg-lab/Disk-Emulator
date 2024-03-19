@@ -45,6 +45,14 @@ typedef struct {
 
 char *mountedDiskname = NULL;
 
+typedef struct {
+    int fileDescriptor;        
+    char filename[9];
+
+} OpenFileEntry;
+
+static OpenFileEntry *openFileTable = NULL;
+
 
 /* Makes a blank TinyFS file system of size nBytes on the unix file
 specified by ‘filename’. This function should use the emulated disk
