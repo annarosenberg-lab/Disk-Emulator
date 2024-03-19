@@ -14,36 +14,36 @@ typedef struct {
     unsigned char blockType;
     unsigned char magicNumber;
     unsigned char rootInode;
-    unsigned char freeBlockPtr;
-    unsigned char emptyBytes[BLOCKSIZE - 4];
+    char freeBlockPtr;
+    char emptyBytes[BLOCKSIZE - 4];
 } Superblock;
 
 typedef struct {
     unsigned char blockType;
     unsigned char magicNumber;
     unsigned char fileName[9];
-    unsigned char fileSize; 
-    unsigned char filePointer;
-    unsigned char nextInodePtr;
-    unsigned char firstFileExtentPtr;
-    unsigned char emptyBytes[BLOCKSIZE - 15];
+    char fileSize; 
+    char filePointer;
+    char nextInodePtr;
+    char firstFileExtentPtr;
+    char emptyBytes[BLOCKSIZE - 15];
 } Inode;
 
 typedef struct{
     unsigned char blockType;
     unsigned char magicNumber;
-    unsigned char nextDataBlock;
-    unsigned char data[BLOCKSIZE - 3];
+    char nextDataBlock;
+    char data[BLOCKSIZE - 3];
 } FileExtent;
 
 typedef struct {
     unsigned char blockType;
     unsigned char magicNumber;
-    unsigned char nextFreeBlock; 
-    unsigned char emptyBytes[BLOCKSIZE - 3];
+    char nextFreeBlock; 
+    char emptyBytes[BLOCKSIZE - 3];
 } FreeBlock;
 
-char *mountedDiskname = NULL;
+static char *mountedDiskname = NULL;
 
 typedef struct {
     fileDescriptor fileDescriptor;        
@@ -53,6 +53,8 @@ typedef struct {
 } OpenFileEntry;
 
 static OpenFileEntry *openFileTable = NULL;
+
+
 
 
 /* Makes a blank TinyFS file system of size nBytes on the unix file
@@ -115,7 +117,6 @@ int tfs_mount(char *diskname){
     if (buffer[0] != 1) return -1; // Incorrect block type
     if (buffer[1] != MAGIC_NUMBER) return -1; // Incorrect magic number
     
-
     mountedDiskname = diskname;
     return 0;
 
@@ -126,4 +127,79 @@ int tfs_unmount(void){
     mountedDiskname = NULL;
     return 0;
     
+}
+
+/* Creates or Opens a file for reading and writing on the currently
+mounted file system. Creates a dynamic resource table entry for the file,
+and returns a file descriptor (integer) that can be used to reference
+this entry while the filesystem is mounted. */
+fileDescriptor tfs_openFile(char *name){
+    
+
+    if (mountedDiskname == NULL) return -1; // No file system mounted
+
+    int mountedFD = openDisk(mountedDiskname, 0);
+    fileDescriptor nextOpenTableFD = mountedFD + 1;
+    //check if already in open table
+    if (openFileTable != NULL) {
+        OpenFileEntry *tempEntry = openFileTable; 
+        while (tempEntry != NULL) { 
+            if (strcmp(tempEntry->filename, name) == 0) { 
+                // File already exists in table, return file descriptor
+                return tempEntry->fileDescriptor;
+            }
+            tempEntry = tempEntry->nextEntry; 
+            nextOpenTableFD++;
+        }
+}
+
+    //check if inode with name already exists
+    Inode rootInode;
+    if (readBlock(mountedFD, 1, &rootInode) < 0) return -1;
+    Inode tempInode = rootInode;
+    while (tempInode.nextInodePtr != -1){
+        if (strcmp(tempInode.fileName, name) == 0){
+            //file already exists
+            //create new open file entry
+            OpenFileEntry *newEntry = malloc(sizeof(OpenFileEntry));
+            newEntry->fileDescriptor = nextOpenTableFD;
+            strcpy(newEntry->filename, name);
+            newEntry->nextEntry = openFileTable;
+            openFileTable = newEntry;
+            
+            //return file descriptor
+            return nextOpenTableFD;
+        }
+        if (readBlock(mountedFD, tempInode.nextInodePtr, &tempInode) < 0) return -1; // Bad inode ptr
+    }
+    
+    //if not found, create new inode (make sure there is enough space for new inode)
+    Superblock superblock;
+    Inode newInode;
+    FreeBlock newInodeBlockInfo;
+    if (readBlock(mountedFD, 0, &superblock) < 0) return -1;
+    if (superblock.freeBlockPtr == -1) return -1; // No free blocks
+    char newInodeBlock = superblock.freeBlockPtr;
+    if (readBlock(mountedFD, newInodeBlock, &newInodeBlockInfo) < 0) return -1;
+    superblock.freeBlockPtr = newInodeBlockInfo.nextFreeBlock;
+    if (writeBlock(mountedFD, 0, &superblock) < 0) return -1;
+    newInode.blockType = 2;
+    newInode.magicNumber = MAGIC_NUMBER;
+    strcpy(newInode.fileName, name);
+    newInode.fileSize = 0;
+    newInode.filePointer = 0;
+    newInode.nextInodePtr = -1;
+    newInode.firstFileExtentPtr = -1;
+    if (writeBlock(mountedFD, newInodeBlock, &newInode) < 0) return -1;
+
+    //create new open file entry
+    OpenFileEntry *newEntry = malloc(sizeof(OpenFileEntry));
+    newEntry->fileDescriptor = nextOpenTableFD;
+    strcpy(newEntry->filename, name);
+    newEntry->nextEntry = openFileTable;
+    openFileTable = newEntry;
+
+    //return file descriptor
+    return nextOpenTableFD;
+
 }
