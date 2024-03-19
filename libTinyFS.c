@@ -25,6 +25,7 @@ int tfs_mkfs(char *filename, int nBytes) {
     rootInode.blockType = 2;
     rootInode.magicNumber = MAGIC_NUMBER;
     strcpy(rootInode.fileName, "root");
+    rootInode.fileName[8] = '\0';
     rootInode.fileSize = nBytes / BLOCKSIZE;
     rootInode.filePointer = 1;
     rootInode.nextInodePtr = -1;
@@ -174,6 +175,7 @@ fileDescriptor tfs_openFile(char *name) {
     newInode.blockType = 2;
     newInode.magicNumber = MAGIC_NUMBER;
     strcpy(newInode.fileName, name);
+    newInode.fileName[8] = '\0';
     newInode.fileSize = 0;
     newInode.filePointer = newInodeBlock;
     newInode.nextInodePtr = -1;
@@ -191,7 +193,115 @@ fileDescriptor tfs_openFile(char *name) {
     return nextOpenTableFD;
 }
 
-int tfs_writeFile(fileDescriptor FD, char *buffer, int size) {
+int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
+    if (mountedDiskname == NULL) return NO_FS_MOUNTED; // No file system mounted
+    if (FD < 0) return INVALID_FD; // Invalid file descriptor
+
+    int mountedFD = openDisk(mountedDiskname, 0);
+    OpenFileEntry *tempEntry = openFileTable;
+    while (tempEntry != NULL) {
+        if (tempEntry->fileDescriptor == FD) {
+            // File found in open file table
+            char filename[9];
+            strcpy(filename, tempEntry->filename);
+
+            //find file inode
+            Inode rootInode;
+            if (readBlock(mountedFD, 1, &rootInode) < 0) return READ_ERROR;
+            Inode fileInode = rootInode;
+            while (fileInode.nextInodePtr != -1){
+                if (strcmp(fileInode.fileName, filename) == 0){
+                    //file inode found
+                    //clear file extent blocks if any exist
+                    Inode tempInode = fileInode;
+                    FreeBlock replacementBlock;
+                    replacementBlock.blockType = 4;
+                    replacementBlock.magicNumber = MAGIC_NUMBER;
+                    int updateFreeBlockList = 0;
+                    while (tempInode.firstFileExtentPtr != -1){
+                        updateFreeBlockList = 1;
+                        FileExtent targetFileExtent;
+                        int targetBlock = tempInode.firstFileExtentPtr;
+                        if (readBlock(mountedFD, tempInode.firstFileExtentPtr, &targetFileExtent) < 0) return READ_ERROR;
+                        replacementBlock.nextFreeBlock = tempInode.firstFileExtentPtr;
+                        tempInode.firstFileExtentPtr = targetFileExtent.nextDataBlock;
+                        if (writeBlock(mountedFD, targetBlock, &replacementBlock) < 0) return WRITE_ERROR;
+                    }
+
+                    //link replacement blocks to free block list
+                    if (updateFreeBlockList){
+                        Superblock superblock;
+                        if (readBlock(mountedFD, 0, &superblock) < 0) return READ_ERROR;
+                        replacementBlock.nextFreeBlock = superblock.freeBlockPtr;
+                        superblock.freeBlockPtr = fileInode.firstFileExtentPtr;
+                        if (writeBlock(mountedFD, 0, &superblock) < 0) return WRITE_ERROR;
+
+                    }
+                
+                    //update file inode
+                    fileInode.firstFileExtentPtr = -1;
+                    //write buffer to file
+                    int ExtentBlocksNeeded = size / (BLOCKSIZE - 3);
+                    if (size % (BLOCKSIZE - 3) != 0) ExtentBlocksNeeded++;
+                    for (int i = 0; i < ExtentBlocksNeeded; i++){
+                        FileExtent newExtentBlock;
+                        Superblock superblock;
+                        newExtentBlock.blockType = 4;
+                        newExtentBlock.magicNumber = MAGIC_NUMBER;
+                        if (readBlock(mountedFD, 0, &superblock) < 0) return READ_ERROR;
+                        if (superblock.freeBlockPtr == -1) return OUT_OF_BLOCKS; // No free blocks
+                        int extentTargetBlock = superblock.freeBlockPtr;
+                        FreeBlock targetFreeBlock;
+                        if (readBlock(mountedFD, superblock.freeBlockPtr, &targetFreeBlock) < 0) return READ_ERROR;
+
+                        //write data to extent block
+                        for (int j = 0; j < BLOCKSIZE - 3; j++){
+                            if (i * (BLOCKSIZE - 3) + j < size){
+                                newExtentBlock.data[j] = buffer[i * (BLOCKSIZE - 3) + j];
+                            }
+                            else {
+                                newExtentBlock.data[j] = '\0';
+                            }
+                        }
+                        //update free block list
+                        if (i < ExtentBlocksNeeded - 1){
+                            newExtentBlock.nextDataBlock = targetFreeBlock.nextFreeBlock;
+                        }
+                        else {
+                            newExtentBlock.nextDataBlock = -1;
+                        }
+                        superblock.freeBlockPtr = targetFreeBlock.nextFreeBlock;
+
+                        //write extent block to disk
+                        if (writeBlock(mountedFD, extentTargetBlock, &newExtentBlock) < 0) return WRITE_ERROR;
+                        if (writeBlock(mountedFD, 0, &superblock) < 0) return WRITE_ERROR;
+
+                        //link extent block to file inode if first extent block
+                        if (i == 0){
+                            fileInode.firstFileExtentPtr = extentTargetBlock;
+                        }
+
+                    }
+                    //update file inode
+                    fileInode.fileSize = size;
+                    if (writeBlock(mountedFD, fileInode.filePointer, &fileInode) < 0) return WRITE_ERROR;
+                    return 0;
+                    
+                    
+
+                }
+                if (readBlock(mountedFD, fileInode.nextInodePtr, &fileInode) < 0) return READ_ERROR; // Bad inode ptr
+            }
+            return INVALID_FD; // No inode found for file descriptor
+        }
+        tempEntry = tempEntry->nextEntry;
+    }
+
+
+    return INVALID_FD; // File not found in open file table
+}
+
+/* int tfs_writeFile(fileDescriptor FD, char *buffer, int size) {
     int mountedFD = openDisk(mountedDiskname, 0);
     OpenFileEntry *current_entry = openFileTable;
     while(current_entry != NULL) {
@@ -224,7 +334,7 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size) {
         tempInode.firstFileExtentPtr = currentFileExtent.nextDataBlock;
         
     }
-}
+} */
 
 int append_free_block(unsigned char fbPtr) {
     int mountedFD = openDisk(mountedDiskname, 0);
