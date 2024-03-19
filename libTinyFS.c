@@ -2,12 +2,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include "libDisk.c"
+#include "tinyFS_errno.h"
 
 #define BLOCKSIZE 256
 #define MAGIC_NUMBER 0x44
 #define DEFAULT_DISK_SIZE 10240 
 #define DEFAULT_DISK_NAME “tinyFSDisk”
 typedef int fileDescriptor;
+
+int tfs_unmount(void);
 
 // superblock structure
 typedef struct {
@@ -22,7 +25,7 @@ typedef struct {
     unsigned char blockType;
     unsigned char magicNumber;
     unsigned char fileName[9];
-    char fileSize; 
+    char fileSize; // in blocks
     char filePointer;
     char nextInodePtr;
     char firstFileExtentPtr;
@@ -65,7 +68,7 @@ setting magic numbers, initializing and writing the superblock and
 inodes, etc. Must return a specified success/error code. */
 int tfs_mkfs(char *filename, int nBytes){
     int disk = openDisk(filename, nBytes);
-    if (disk < 0) return -1; // Error opening disk
+    if (disk < 0) return INVALID_DISK; // Error opening disk
 
     Superblock superblock;
     superblock.blockType = 1;
@@ -77,14 +80,14 @@ int tfs_mkfs(char *filename, int nBytes){
     rootInode.blockType = 2;
     rootInode.magicNumber = MAGIC_NUMBER;
     strcpy(rootInode.fileName, "root");
-    rootInode.fileSize = 0;
+    rootInode.fileSize = nBytes / BLOCKSIZE;
     rootInode.filePointer = -1;
     rootInode.nextInodePtr = -1;
     rootInode.firstFileExtentPtr = -1;
 
     // Write superblock and root inode to disk
-    if (writeBlock(disk, 0, &superblock) < 0) return -1;
-    if (writeBlock(disk, 1, &rootInode) < 0) return -1;
+    if (writeBlock(disk, 0, &superblock) < 0) return WRITE_ERROR;
+    if (writeBlock(disk, 1, &rootInode) < 0) return WRITE_ERROR;
 
     // Initialize free blocks
     FreeBlock freeBlock;
@@ -92,7 +95,7 @@ int tfs_mkfs(char *filename, int nBytes){
     freeBlock.magicNumber = MAGIC_NUMBER;
     freeBlock.nextFreeBlock = 3;
     for (int i = 2; i < nBytes / BLOCKSIZE; i++){
-        if (writeBlock(disk, i, &freeBlock) < 0) return -1;
+        if (writeBlock(disk, i, &freeBlock) < 0) return WRITE_ERROR;
         if (i < nBytes / BLOCKSIZE - 1) freeBlock.nextFreeBlock = i + 1;
         else if (i == nBytes / BLOCKSIZE - 1) freeBlock.nextFreeBlock = -1;
     }
@@ -107,15 +110,25 @@ int tfs_mkfs(char *filename, int nBytes){
 system is the correct type. In tinyFS, only one file system may be
 mounted at a time.  Must return a specified success/error code. */
 int tfs_mount(char *diskname){
-    //if (mountedDiskname != NULL) tfs_unmount(); // File system already mounted
-
+    if (mountedDiskname != NULL) tfs_unmount(); // File system already mounted
     int disk = openDisk(diskname, 0);
-    if (disk < 0) return -1; // Error opening disk, add error message
+    if (disk < 0) return INVALID_DISK; // Error opening disk, add error message
 
     char buffer[BLOCKSIZE];
     if (readBlock(disk, 0, buffer) < 0) return -1;
-    if (buffer[0] != 1) return -1; // Incorrect block type
-    if (buffer[1] != MAGIC_NUMBER) return -1; // Incorrect magic number
+    if (buffer[0] != 1) return NOT_TINYFS_FORMAT; // Incorrect block type
+    if (buffer[1] != MAGIC_NUMBER) return NOT_TINYFS_FORMAT; // Incorrect magic number
+
+    //get file size
+    char rootInode[BLOCKSIZE];
+    if (readBlock(disk, 1, rootInode) < 0) return READ_ERROR;
+    char fileSize = rootInode[11];
+
+    //check that every block has correct magic number
+    for (int i = 1; i < fileSize; i++){
+        if (readBlock(disk, i, buffer) < 0) return READ_ERROR;
+        if (buffer[1] != MAGIC_NUMBER) return NOT_TINYFS_FORMAT; // Incorrect magic number
+    }
     
     mountedDiskname = diskname;
     return 0;
@@ -145,7 +158,7 @@ this entry while the filesystem is mounted. */
 fileDescriptor tfs_openFile(char *name){
     
 
-    if (mountedDiskname == NULL) return -1; // No file system mounted
+    if (mountedDiskname == NULL) return NO_FS_MOUNTED; // No file system mounted
 
     int mountedFD = openDisk(mountedDiskname, 0);
     fileDescriptor nextOpenTableFD = mountedFD + 1;
@@ -164,7 +177,7 @@ fileDescriptor tfs_openFile(char *name){
 
     //check if inode with name already exists
     Inode rootInode;
-    if (readBlock(mountedFD, 1, &rootInode) < 0) return -1;
+    if (readBlock(mountedFD, 1, &rootInode) < 0) return READ_ERROR;
     Inode tempInode = rootInode;
     while (tempInode.nextInodePtr != -1){
         if (strcmp(tempInode.fileName, name) == 0){
@@ -179,19 +192,19 @@ fileDescriptor tfs_openFile(char *name){
             //return file descriptor
             return nextOpenTableFD;
         }
-        if (readBlock(mountedFD, tempInode.nextInodePtr, &tempInode) < 0) return -1; // Bad inode ptr
+        if (readBlock(mountedFD, tempInode.nextInodePtr, &tempInode) < 0) return READ_ERROR; // Bad inode ptr
     }
     
     //if not found, create new inode (make sure there is enough space for new inode)
     Superblock superblock;
     Inode newInode;
     FreeBlock newInodeBlockInfo;
-    if (readBlock(mountedFD, 0, &superblock) < 0) return -1;
+    if (readBlock(mountedFD, 0, &superblock) < 0) return READ_ERROR;
     if (superblock.freeBlockPtr == -1) return -1; // No free blocks
     char newInodeBlock = superblock.freeBlockPtr;
-    if (readBlock(mountedFD, newInodeBlock, &newInodeBlockInfo) < 0) return -1;
+    if (readBlock(mountedFD, newInodeBlock, &newInodeBlockInfo) < 0) return READ_ERROR;
     superblock.freeBlockPtr = newInodeBlockInfo.nextFreeBlock;
-    if (writeBlock(mountedFD, 0, &superblock) < 0) return -1;
+    if (writeBlock(mountedFD, 0, &superblock) < 0) return WRITE_ERROR;
     newInode.blockType = 2;
     newInode.magicNumber = MAGIC_NUMBER;
     strcpy(newInode.fileName, name);
@@ -199,7 +212,7 @@ fileDescriptor tfs_openFile(char *name){
     newInode.filePointer = 0;
     newInode.nextInodePtr = -1;
     newInode.firstFileExtentPtr = -1;
-    if (writeBlock(mountedFD, newInodeBlock, &newInode) < 0) return -1;
+    if (writeBlock(mountedFD, newInodeBlock, &newInode) < 0) return WRITE_ERROR;
 
     //create new open file entry
     OpenFileEntry *newEntry = malloc(sizeof(OpenFileEntry));
