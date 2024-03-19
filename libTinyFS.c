@@ -46,8 +46,9 @@ typedef struct {
 char *mountedDiskname = NULL;
 
 typedef struct {
-    int fileDescriptor;        
+    fileDescriptor fileDescriptor;        
     char filename[9];
+    struct OpenFileEntry *nextEntry;
 
 } OpenFileEntry;
 
