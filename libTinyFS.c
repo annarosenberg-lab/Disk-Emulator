@@ -43,6 +43,7 @@ typedef struct {
     unsigned char emptyBytes[BLOCKSIZE - 3];
 } FreeBlock;
 
+char *mountedDiskname = NULL;
 
 
 /* Makes a blank TinyFS file system of size nBytes on the unix file
@@ -87,4 +88,33 @@ int tfs_mkfs(char *filename, int nBytes){
 
     return 0;
 
+}
+
+
+/* tfs_mount(char *diskname) “mounts” a TinyFS file system located within
+‘diskname’. As part of the mount operation, tfs_mount should verify the file
+system is the correct type. In tinyFS, only one file system may be
+mounted at a time.  Must return a specified success/error code. */
+int tfs_mount(char *diskname){
+    //if (mountedDiskname != NULL) tfs_unmount(); // File system already mounted
+
+    int disk = openDisk(diskname, 0);
+    if (disk < 0) return -1; // Error opening disk, add error message
+
+    char buffer[BLOCKSIZE];
+    if (readBlock(disk, 0, buffer) < 0) return -1;
+    if (buffer[0] != 1) return -1; // Incorrect block type
+    if (buffer[1] != MAGIC_NUMBER) return -1; // Incorrect magic number
+    
+
+    mountedDiskname = diskname;
+    return 0;
+
+}
+
+int tfs_unmount(void){
+
+    mountedDiskname = NULL;
+    return 0;
+    
 }
