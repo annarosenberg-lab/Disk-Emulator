@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "libDisk.c"
+
 
 #define BLOCKSIZE 256
 #define MAGIC_NUMBER 0x44
