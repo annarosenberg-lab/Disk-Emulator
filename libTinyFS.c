@@ -125,8 +125,17 @@ int tfs_mount(char *diskname){
 int tfs_unmount(void){
 
     mountedDiskname = NULL;
+
+    // clear the open file table
+    OpenFileEntry *tempEntry = openFileTable;
+    while (tempEntry != NULL) {
+        OpenFileEntry *nextEntry = tempEntry->nextEntry;
+        free(tempEntry);
+        tempEntry = nextEntry;
+    }
+    openFileTable = NULL;
     return 0;
-    
+
 }
 
 /* Creates or Opens a file for reading and writing on the currently
