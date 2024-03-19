@@ -26,7 +26,7 @@ int tfs_mkfs(char *filename, int nBytes) {
     rootInode.magicNumber = MAGIC_NUMBER;
     strcpy(rootInode.fileName, "root");
     rootInode.fileSize = nBytes / BLOCKSIZE;
-    rootInode.filePointer = -1;
+    rootInode.filePointer = 1;
     rootInode.nextInodePtr = -1;
     rootInode.firstFileExtentPtr = -1;
 
@@ -175,7 +175,7 @@ fileDescriptor tfs_openFile(char *name) {
     newInode.magicNumber = MAGIC_NUMBER;
     strcpy(newInode.fileName, name);
     newInode.fileSize = 0;
-    newInode.filePointer = 0;
+    newInode.filePointer = newInodeBlock;
     newInode.nextInodePtr = -1;
     newInode.firstFileExtentPtr = -1;
     if (writeBlock(mountedFD, newInodeBlock, &newInode) < 0) return WRITE_ERROR;
