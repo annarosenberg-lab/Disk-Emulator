@@ -11,7 +11,7 @@ int openDisk(char *filename, int nBytes){
 
     int disk;
     if (nBytes == 0){
-        disk = open(filename, O_RDWR | O_CREAT);
+        disk = open(filename, O_RDWR);
         if (disk == -1) return -1;
         return  disk;
     }
@@ -19,7 +19,7 @@ int openDisk(char *filename, int nBytes){
     else if (nBytes < BLOCKSIZE) return -1;
 
     else {
-        disk = open(filename, O_RDWR | O_CREAT);
+        disk = open(filename, O_RDWR | O_CREAT, 0666);
         if (disk == -1) return -1;
         // make sure size is a multiple of BLOCKSIZE
         nBytes = nBytes - (nBytes % BLOCKSIZE);
