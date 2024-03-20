@@ -224,8 +224,7 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
     OpenFileEntry *tempEntry = openFileTable;
     while (tempEntry != NULL) {
         if (tempEntry->fileDescriptor == FD) {
-            //print file descriptor
-            
+              
             // File found in open file table
             char filename[9];
             strcpy(filename, tempEntry->filename);
@@ -235,6 +234,8 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
             if (readBlock(mountedFD, 1, &rootInode) < 0) return READ_ERROR;
             Inode fileInode = rootInode;
             while (fileInode.nextInodePtr != -1){
+                if (readBlock(mountedFD, fileInode.nextInodePtr, &fileInode) < 0) return READ_ERROR; // Bad inode ptr
+              
                 if (strcmp(fileInode.fileName, filename) == 0){
                     //file inode found
                     //clear file extent blocks if any exist
@@ -262,7 +263,6 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
                         if (writeBlock(mountedFD, 0, &superblock) < 0) return WRITE_ERROR;
 
                     }
-                
                     //update file inode
                     fileInode.firstFileExtentPtr = -1;
                     //write buffer to file
@@ -315,7 +315,7 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
                     
 
                 }
-                if (readBlock(mountedFD, fileInode.nextInodePtr, &fileInode) < 0) return READ_ERROR; // Bad inode ptr
+                
             }
             return NO_INODE_MATCHING_FD; // No inode found for file descriptor
         }
