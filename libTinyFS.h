@@ -6,7 +6,7 @@
 #define BLOCKSIZE 256
 #define MAGIC_NUMBER 0x44
 #define DEFAULT_DISK_SIZE 10240 
-#define DEFAULT_DISK_NAME “tinyFSDisk”
+#define DEFAULT_DISK_NAME "tinyFSDisk"
 typedef int fileDescriptor;
 
 // superblock structure
@@ -53,7 +53,8 @@ typedef struct {
 
 } OpenFileEntry;
 
-static OpenFileEntry *openFileTable = NULL;
+static OpenFileEntry originalFileTable = {-1, "root", NULL, 0};
+static OpenFileEntry *openFileTable = &originalFileTable;
 
 
 int tfs_seek(fileDescriptor FD, int offset);

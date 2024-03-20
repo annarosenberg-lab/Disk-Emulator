@@ -178,6 +178,7 @@ fileDescriptor tfs_openFile(char *name){
     //create new open file entry
     OpenFileEntry *newEntry = malloc(sizeof(OpenFileEntry));
     newEntry->fileDescriptor = nextOpenTableFD;
+    newEntry->offset = 0;
     strcpy(newEntry->filename, name);
     newEntry->nextEntry = openFileTable;
     openFileTable = newEntry;
@@ -192,7 +193,6 @@ int tfs_closeFile(fileDescriptor FD) {
     OpenFileEntry *current_entry = openFileTable->nextEntry;
     if (prev_entry->fileDescriptor == FD) {
         openFileTable = current_entry->nextEntry;
-        free(current_entry);
         return 0;
     }
     while(current_entry != NULL) {
@@ -207,6 +207,7 @@ int tfs_closeFile(fileDescriptor FD) {
     }
     prev_entry->nextEntry = current_entry->nextEntry;
     free(current_entry);
+    
     return 0;
 
 }
@@ -351,6 +352,9 @@ int getInodeFromFD(fileDescriptor FD) {
         }
         current_entry = current_entry->nextEntry;
     }
+    if (current_entry == NULL) {
+        return -1;
+    }
     //find inode with the same filename
     Inode rootInode;
     readBlock(mountedFD, 1, &rootInode);
@@ -414,6 +418,10 @@ int tfs_deleteFile(fileDescriptor FD) {
 int tfs_readByte(fileDescriptor FD, char *buffer) {
     int mountedFD = openDisk(mountedDiskname, 0);
     int inodePtr = getInodeFromFD(FD);
+    if (inodePtr == -1) {
+        //no inode found, file not open prob
+        return -1;
+    }
     Inode tempInode;
     if (readBlock(mountedFD, inodePtr, &tempInode) < 0) return -1;
     OpenFileEntry *current_entry = openFileTable;
@@ -421,7 +429,11 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
         if (current_entry->fileDescriptor == FD) {
             break;
         }
+        
         current_entry = current_entry->nextEntry;
+    }
+    if (current_entry == NULL) {
+        return -1;
     }
     int offset = current_entry->offset;
     if (offset >= tempInode.fileSize) {
@@ -449,6 +461,9 @@ int tfs_seek(fileDescriptor FD, int offset) {
             break;
         }
         current_entry = current_entry->nextEntry;
+    }
+    if (current_entry == NULL) {
+        return -1;
     }
     current_entry->offset = offset;
     return 0;
@@ -516,15 +531,19 @@ int main(int argc, char *argv[]){
     tfs_readByte(fd, buf);
     printf("Byte read %s\n", buf);
 
-    
-    
+    //test close_file
+    tfs_closeFile(fd);
+    result = tfs_readByte(fd, buf);
+    if (result < 0){
+        printf("Error reading file\n, result: %d\n", result);
+    }
 
     result = tfs_unmount();
     if (result < 0){
         printf("Error unmounting disk\n");
         return 1;
     }
-
+    printf("success unmounting disk!\n");
 
     return 0;
 } 
