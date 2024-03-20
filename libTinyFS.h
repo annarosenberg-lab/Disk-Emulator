@@ -62,3 +62,6 @@ int tfs_mkfs(char *filename, int nBytes);
 int tfs_deleteFile(fileDescriptor FD);
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size);
 int tfs_unmount(void);
+int tfs_mount(char *diskname);
+int getInodeFromFD(fileDescriptor FD);
+fileDescriptor tfs_openFile(char *name);
