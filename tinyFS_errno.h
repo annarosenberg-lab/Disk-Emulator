@@ -5,3 +5,4 @@
 #define NO_FS_MOUNTED -6
 #define INVALID_FD -7
 #define OUT_OF_BLOCKS -8
+#define NO_INODE_MATCHING_FD -9
