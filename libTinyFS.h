@@ -43,7 +43,7 @@ typedef struct {
     char emptyBytes[BLOCKSIZE - 3];
 } FreeBlock;
 
-static char *mountedDiskname = NULL;
+char *mountedDiskname;
 
 typedef struct {
     fileDescriptor fileDescriptor;        

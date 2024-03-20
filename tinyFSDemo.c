@@ -1,5 +1,4 @@
 #include "libTinyFS.h"
-#include "libDisk.h"
 
 //main function
 int main(int argc, char *argv[]){
@@ -62,15 +61,13 @@ int main(int argc, char *argv[]){
     tfs_readByte(fd, buf);
     printf("Byte read %s\n", buf);
 
-    
-    
-
     result = tfs_unmount();
     if (result < 0){
         printf("Error unmounting disk\n");
         return 1;
     }
 
+    printf("success unmounting!\n");
 
     return 0;
 } 
