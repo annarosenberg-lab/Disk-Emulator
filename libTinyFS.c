@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "libDisk.c"
-#include "tinyFS_errno.h"
 #include "libTinyFS.h"
+#include "tinyFS_errno.h"
+
 
 /* Makes a blank TinyFS file system of size nBytes on the unix file
 specified by ‘filename’. This function should use the emulated disk
@@ -11,7 +13,7 @@ library to open the specified unix file, and upon success, format the
 file to be a mountable disk. This includes initializing all data to 0x00,
 setting magic numbers, initializing and writing the superblock and
 inodes, etc. Must return a specified success/error code. */
-int tfs_mkfs(char *filename, int nBytes) {
+int tfs_mkfs(char *filename, int nBytes){
     int disk = openDisk(filename, nBytes);
     if (disk < 0) return INVALID_DISK; // Error opening disk
 
@@ -45,32 +47,11 @@ int tfs_mkfs(char *filename, int nBytes) {
         if (i < nBytes / BLOCKSIZE - 1) freeBlock.nextFreeBlock = i + 1;
         else if (i == nBytes / BLOCKSIZE - 1) freeBlock.nextFreeBlock = -1;
     }
-    return 0;
-}
 
-int tfs_closeFile(fileDescriptor FD) {
-    OpenFileEntry *prev_entry = openFileTable;
-    OpenFileEntry *current_entry = openFileTable->nextEntry;
-    if (prev_entry->fileDescriptor == FD) {
-        openFileTable = current_entry->nextEntry;
-        free(current_entry);
-        return 0;
-    }
-    while(current_entry != NULL) {
-        if (current_entry->fileDescriptor == FD) {
-            break;
-        }
-        prev_entry = current_entry;
-        current_entry = current_entry->nextEntry;
-    }
-    if (current_entry == NULL) {
-        return 1;
-    }
-    prev_entry->nextEntry = current_entry->nextEntry;
-    free(current_entry);
     return 0;
 
 }
+
 
 /* tfs_mount(char *diskname) “mounts” a TinyFS file system located within
 ‘diskname’. As part of the mount operation, tfs_mount should verify the file
@@ -122,7 +103,7 @@ int tfs_unmount(void){
 mounted file system. Creates a dynamic resource table entry for the file,
 and returns a file descriptor (integer) that can be used to reference
 this entry while the filesystem is mounted. */
-fileDescriptor tfs_openFile(char *name) {
+fileDescriptor tfs_openFile(char *name){
     
 
     if (mountedDiskname == NULL) return NO_FS_MOUNTED; // No file system mounted
@@ -140,7 +121,7 @@ fileDescriptor tfs_openFile(char *name) {
             tempEntry = tempEntry->nextEntry; 
             nextOpenTableFD++;
         }
-    }   
+}
 
     //check if inode with name already exists
     Inode rootInode;
@@ -182,6 +163,18 @@ fileDescriptor tfs_openFile(char *name) {
     newInode.firstFileExtentPtr = -1;
     if (writeBlock(mountedFD, newInodeBlock, &newInode) < 0) return WRITE_ERROR;
 
+    //update root inode to point to new inode
+    Inode tempInode2 = rootInode;
+    int prevInodeBlock = 1;
+    while (tempInode2.nextInodePtr != -1){
+        if (readBlock(mountedFD, tempInode2.nextInodePtr, &tempInode2) < 0) return READ_ERROR; // Bad inode ptr
+    }
+    tempInode2.nextInodePtr = newInodeBlock;
+    if (writeBlock(mountedFD, tempInode.filePointer, &tempInode2) < 0) return WRITE_ERROR;
+
+
+    
+
     //create new open file entry
     OpenFileEntry *newEntry = malloc(sizeof(OpenFileEntry));
     newEntry->fileDescriptor = nextOpenTableFD;
@@ -191,8 +184,38 @@ fileDescriptor tfs_openFile(char *name) {
 
     //return file descriptor
     return nextOpenTableFD;
+
 }
 
+int tfs_closeFile(fileDescriptor FD) {
+    OpenFileEntry *prev_entry = openFileTable;
+    OpenFileEntry *current_entry = openFileTable->nextEntry;
+    if (prev_entry->fileDescriptor == FD) {
+        openFileTable = current_entry->nextEntry;
+        free(current_entry);
+        return 0;
+    }
+    while(current_entry != NULL) {
+        if (current_entry->fileDescriptor == FD) {
+            break;
+        }
+        prev_entry = current_entry;
+        current_entry = current_entry->nextEntry;
+    }
+    if (current_entry == NULL) {
+        return 1;
+    }
+    prev_entry->nextEntry = current_entry->nextEntry;
+    free(current_entry);
+    return 0;
+
+}
+
+
+/* Writes buffer ‘buffer’ of size ‘size’, which represents an entire
+file’s content, to the file system. Previous content (if any) will be 
+completely lost. Sets the file pointer to 0 (the start of file) when
+done. Returns success/error codes. */
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
     if (mountedDiskname == NULL) return NO_FS_MOUNTED; // No file system mounted
     if (FD < 0) return INVALID_FD; // Invalid file descriptor
@@ -201,6 +224,8 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
     OpenFileEntry *tempEntry = openFileTable;
     while (tempEntry != NULL) {
         if (tempEntry->fileDescriptor == FD) {
+            //print file descriptor
+            
             // File found in open file table
             char filename[9];
             strcpy(filename, tempEntry->filename);
@@ -292,7 +317,7 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
                 }
                 if (readBlock(mountedFD, fileInode.nextInodePtr, &fileInode) < 0) return READ_ERROR; // Bad inode ptr
             }
-            return INVALID_FD; // No inode found for file descriptor
+            return NO_INODE_MATCHING_FD; // No inode found for file descriptor
         }
         tempEntry = tempEntry->nextEntry;
     }
@@ -300,41 +325,6 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
 
     return INVALID_FD; // File not found in open file table
 }
-
-/* int tfs_writeFile(fileDescriptor FD, char *buffer, int size) {
-    int mountedFD = openDisk(mountedDiskname, 0);
-    OpenFileEntry *current_entry = openFileTable;
-    while(current_entry != NULL) {
-        if (current_entry->fileDescriptor == FD) {
-            break;
-        }
-        current_entry = current_entry->nextEntry;
-    }
-    //find inode with the same filename
-    Inode rootInode;
-    if (readBlock(mountedFD, 1, &rootInode) < 0) return -1;
-    Inode tempInode = rootInode;
-    while(tempInode.nextInodePtr != -1) {
-        if (strcmp(tempInode.fileName, current_entry->filename) == 0) {
-            //found the file
-            break;
-        }
-        if (readBlock(mountedFD, tempInode.nextInodePtr, &tempInode) < 0) return -1; //bad inode ptr
-    }
-    while (size > 0) {
-        if (tempInode.firstFileExtentPtr == NULL) {
-            //Find an empty block TODO: come back to this???
-        }
-        //overwrite the first file extent
-        FileExtent currentFileExtent;
-        if (readBlock(mountedFD, tempInode.firstFileExtentPtr, &currentFileExtent) < 0) return -1;
-        memcpy(&currentFileExtent, buffer, sizeof(currentFileExtent.data));
-        size = size - sizeof(currentFileExtent.data);
-        if (writeBlock(mountedFD, tempInode.firstFileExtentPtr, &currentFileExtent) < 0) return -1;
-        tempInode.firstFileExtentPtr = currentFileExtent.nextDataBlock;
-        
-    }
-} */
 
 int append_free_block(unsigned char fbPtr) {
     int mountedFD = openDisk(mountedDiskname, 0);
@@ -352,7 +342,7 @@ int append_free_block(unsigned char fbPtr) {
     return 0;
 }
 
-int getInodeFromFD(fileDescriptor FD) {
+/*int getInodeFromFD(fileDescriptor FD) {
     int mountedFD = openDisk(mountedDiskname, 0);
     OpenFileEntry *current_entry = openFileTable;
     while(current_entry != NULL) {
@@ -375,7 +365,7 @@ int getInodeFromFD(fileDescriptor FD) {
         if (readBlock(mountedFD, tempInode.nextInodePtr, &tempInode) < 0) return -1; //bad inode ptr
     }
     return prev_inode_ptr;
-}
+} */
 
 
 int tfs_deleteFile(fileDescriptor FD) {
@@ -421,7 +411,7 @@ int tfs_deleteFile(fileDescriptor FD) {
     return 0;
 }
 
-int tfs_readByte(fileDescriptor FD, char *buffer) {
+/*int tfs_readByte(fileDescriptor FD, char *buffer) {
     int mountedFD = openDisk(mountedDiskname, 0);
     int inodePtr = getInodeFromFd(FD);
     Inode tempInode;
@@ -450,7 +440,7 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
     memcpy(buffer, tempFileExtent.data[remainder_offset], sizeof(buffer));
     current_entry->offset++;
     return 0;
-}
+} */
 
 int tfs_seek(fileDescriptor FD, int offset) {
     OpenFileEntry *current_entry = openFileTable;
