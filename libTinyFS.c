@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include "libDisk.c"
+#include "libDisk.h"
 #include "libTinyFS.h"
 #include "tinyFS_errno.h"
 
@@ -342,7 +342,7 @@ int append_free_block(unsigned char fbPtr) {
     return 0;
 }
 
-/*int getInodeFromFD(fileDescriptor FD) {
+int getInodeFromFD(fileDescriptor FD) {
     int mountedFD = openDisk(mountedDiskname, 0);
     OpenFileEntry *current_entry = openFileTable;
     while(current_entry != NULL) {
@@ -365,7 +365,7 @@ int append_free_block(unsigned char fbPtr) {
         if (readBlock(mountedFD, tempInode.nextInodePtr, &tempInode) < 0) return -1; //bad inode ptr
     }
     return prev_inode_ptr;
-} */
+}
 
 
 int tfs_deleteFile(fileDescriptor FD) {
@@ -411,9 +411,9 @@ int tfs_deleteFile(fileDescriptor FD) {
     return 0;
 }
 
-/*int tfs_readByte(fileDescriptor FD, char *buffer) {
+int tfs_readByte(fileDescriptor FD, char *buffer) {
     int mountedFD = openDisk(mountedDiskname, 0);
-    int inodePtr = getInodeFromFd(FD);
+    int inodePtr = getInodeFromFD(FD);
     Inode tempInode;
     if (readBlock(mountedFD, inodePtr, &tempInode) < 0) return -1;
     OpenFileEntry *current_entry = openFileTable;
@@ -434,13 +434,13 @@ int tfs_deleteFile(fileDescriptor FD) {
     if (readBlock(mountedFD, tempInode.firstFileExtentPtr, &tempFileExtent) < 0) return -1;
     //read the rest of them
     while(block_count > 0) {
-        if (readBlock(mountedFD, tempFileExtent.nextDataBlock, &tempFileExtent) < 0) return -1;\
+        if (readBlock(mountedFD, tempFileExtent.nextDataBlock, &tempFileExtent) < 0) return -1;
         block_count--;
     }
-    memcpy(buffer, tempFileExtent.data[remainder_offset], sizeof(buffer));
+    memcpy(buffer, tempFileExtent.data + remainder_offset, 1);
     current_entry->offset++;
     return 0;
-} */
+}
 
 int tfs_seek(fileDescriptor FD, int offset) {
     OpenFileEntry *current_entry = openFileTable;
@@ -500,8 +500,24 @@ int main(int argc, char *argv[]){
         return 1;
     }
 
+    //test tfs_readByte
+    char buf[10];
+    for (int i = 0; i < 14; i++) {
+        result = tfs_readByte(fd, buf);
+        if (result < 0){
+            printf("Error reading file\n, result: %d\n", result);
+            break;
+        }
+        printf("Byte read %s\n", buf);
+    }
 
+    //test tfs_seek
+    tfs_seek(fd, 0);
+    tfs_readByte(fd, buf);
+    printf("Byte read %s\n", buf);
 
+    
+    
 
     result = tfs_unmount();
     if (result < 0){
